@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="description" content="完全在浏览器本地运行的 OpenPGP/GPG 密钥生成、文字和文件加解密工具。" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <title>本地 GPG 加密工具</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-icon" aria-hidden="true">🔐</div>
+      <div>
+        <h1>本地 GPG 加密工具</h1>
+        <p>密钥、文字和文件只在当前浏览器内处理，不上传服务器</p>
+      </div>
+    </div>
+    <button id="clearAllBtn" class="button danger ghost" type="button">清除敏感内容</button>
+  </header>
+
+  <noscript>
+    <div class="fatal">需要启用 JavaScript 才能使用本工具。</div>
+  </noscript>
+
+  <main class="shell">
+    <section id="runtimeWarning" class="notice warning hidden" role="alert"></section>
+
+    <nav class="tabs" aria-label="功能切换">
+      <button class="tab active" data-tab="keys" type="button">密钥管理</button>
+      <button class="tab" data-tab="text" type="button">文字加解密</button>
+      <button class="tab" data-tab="files" type="button">文件加解密</button>
+      <button class="tab" data-tab="help" type="button">使用说明</button>
+    </nav>
+
+    <section class="panel active" data-panel="keys">
+      <div class="section-heading">
+        <div>
+          <h2>生成 OpenPGP/GPG 密钥对</h2>
+          <p>建议默认使用 Curve25519；需要兼容较旧软件时可选择 RSA。</p>
+        </div>
+      </div>
+
+      <div class="form-grid three">
+        <label class="field">
+          <span>名称或昵称</span>
+          <input id="keyName" type="text" autocomplete="name" maxlength="120" placeholder="例如：Alice" />
+        </label>
+        <label class="field">
+          <span>邮箱（可选）</span>
+          <input id="keyEmail" type="email" autocomplete="email" maxlength="180" placeholder="alice@example.com" />
+        </label>
+        <label class="field">
+          <span>密钥算法</span>
+          <select id="keyAlgorithm">
+            <option value="curve25519">Curve25519（推荐）</option>
+            <option value="rsa3072">RSA 3072</option>
+            <option value="rsa4096">RSA 4096</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>私钥口令</span>
+          <input id="keyPassphrase" type="password" autocomplete="new-password" placeholder="至少 10 个字符" />
+        </label>
+        <label class="field">
+          <span>确认口令</span>
+          <input id="keyPassphraseConfirm" type="password" autocomplete="new-password" placeholder="再次输入口令" />
+        </label>
+        <label class="field">
+          <span>有效期（天，0 为永久）</span>
+          <input id="keyExpiryDays" type="number" inputmode="numeric" min="0" max="36500" value="0" />
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="generateKeyBtn" class="button primary" type="button">生成密钥对</button>
+        <span id="keyStatus" class="status" aria-live="polite"></span>
+      </div>
+
+      <div class="fingerprint-box hidden" id="fingerprintBox">
+        <strong>密钥指纹</strong>
+        <code id="keyFingerprint"></code>
+      </div>
+
+      <div class="key-columns">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3>公钥</h3>
+              <p>可安全分享给需要向你发送加密内容的人。</p>
+            </div>
+            <div class="compact-actions">
+              <label class="button small ghost file-button">导入
+                <input id="publicKeyFileInput" type="file" accept=".asc,.pgp,.gpg,.txt,application/pgp-keys,text/plain" hidden />
+              </label>
+              <button class="button small ghost" data-copy-target="publicKeyText" type="button">复制</button>
+              <button id="downloadPublicKeyBtn" class="button small" type="button">下载</button>
+            </div>
+          </div>
+          <textarea id="publicKeyText" class="code-area" spellcheck="false" placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----"></textarea>
+        </div>
+
+        <div class="card private-card">
+          <div class="card-header">
+            <div>
+              <h3>私钥</h3>
+              <p>绝不能分享。请离线备份，并妥善保管口令。</p>
+            </div>
+            <div class="compact-actions">
+              <label class="button small ghost file-button">导入
+                <input id="privateKeyFileInput" type="file" accept=".asc,.pgp,.gpg,.txt,application/pgp-keys,text/plain" hidden />
+              </label>
+              <button class="button small ghost" data-copy-target="privateKeyText" type="button">复制</button>
+              <button id="downloadPrivateKeyBtn" class="button small" type="button">下载</button>
+            </div>
+          </div>
+          <textarea id="privateKeyText" class="code-area" spellcheck="false" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----"></textarea>
+        </div>
+      </div>
+
+      <div class="actions secondary-actions">
+        <button id="downloadRevocationBtn" class="button ghost" type="button" disabled>下载撤销证书</button>
+        <button id="inspectKeysBtn" class="button ghost" type="button">检查密钥指纹</button>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="text">
+      <div class="split-grid">
+        <div class="card">
+          <h2>加密文字</h2>
+          <label class="field">
+            <span>待加密文字</span>
+            <textarea id="plainTextInput" rows="11" placeholder="输入要加密的文字……"></textarea>
+          </label>
+          <label class="field">
+            <span>接收方公钥</span>
+            <textarea id="textEncryptPublicKey" class="code-area short" spellcheck="false" placeholder="粘贴接收方公钥；也可点击下方按钮使用“密钥管理”中的公钥"></textarea>
+          </label>
+          <div class="actions wrap">
+            <button id="useManagedPublicKeyBtn" class="button ghost" type="button">使用已加载公钥</button>
+            <button id="encryptTextBtn" class="button primary" type="button">加密文字</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>解密文字</h2>
+          <label class="field">
+            <span>PGP 加密文字</span>
+            <textarea id="encryptedTextInput" class="code-area short" rows="11" spellcheck="false" placeholder="-----BEGIN PGP MESSAGE-----"></textarea>
+          </label>
+          <label class="field">
+            <span>私钥口令</span>
+            <input id="textDecryptPassphrase" type="password" autocomplete="current-password" placeholder="输入私钥口令" />
+          </label>
+          <div class="actions wrap">
+            <button id="useManagedPrivateKeyBtn" class="button ghost" type="button">使用已加载私钥</button>
+            <button id="decryptTextBtn" class="button primary" type="button">解密文字</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="split-grid result-grid">
+        <div class="card">
+          <div class="card-header">
+            <h3>加密结果</h3>
+            <div class="compact-actions">
+              <button class="button small ghost" data-copy-target="encryptedTextOutput" type="button">复制</button>
+              <button id="downloadEncryptedTextBtn" class="button small" type="button">下载 .asc</button>
+            </div>
+          </div>
+          <textarea id="encryptedTextOutput" class="code-area" rows="12" readonly spellcheck="false"></textarea>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>解密结果</h3>
+            <div class="compact-actions">
+              <button class="button small ghost" data-copy-target="decryptedTextOutput" type="button">复制</button>
+              <button id="downloadDecryptedTextBtn" class="button small" type="button">下载 .txt</button>
+            </div>
+          </div>
+          <textarea id="decryptedTextOutput" rows="12" readonly></textarea>
+        </div>
+      </div>
+      <div id="textStatus" class="status block" aria-live="polite"></div>
+    </section>
+
+    <section class="panel" data-panel="files">
+      <div id="fileModeNotice" class="notice" aria-live="polite"></div>
+      <div class="split-grid">
+        <div class="card file-card">
+          <h2>加密文件 / 图片</h2>
+          <p class="muted">支持任意文件类型。默认生成二进制 <code>.gpg</code> 文件。</p>
+          <label class="dropzone" id="encryptDropzone">
+            <input id="encryptFileInput" type="file" hidden />
+            <span class="drop-icon">⬆️</span>
+            <strong>点击选择文件，或拖放到这里</strong>
+            <small id="encryptFileName">尚未选择文件</small>
+          </label>
+          <label class="field">
+            <span>接收方公钥</span>
+            <textarea id="fileEncryptPublicKey" class="code-area short" spellcheck="false" placeholder="粘贴接收方公钥"></textarea>
+          </label>
+          <label class="check-row">
+            <input id="armorFileOutput" type="checkbox" />
+            <span>输出 ASCII Armor（.asc，可复制但体积更大）</span>
+          </label>
+          <div class="actions wrap">
+            <button id="useManagedPublicKeyFileBtn" class="button ghost" type="button">使用已加载公钥</button>
+            <button id="encryptFileBtn" class="button primary" type="button">加密并下载</button>
+          </div>
+        </div>
+
+        <div class="card file-card">
+          <h2>解密文件 / 图片</h2>
+          <p class="muted">支持二进制 <code>.gpg/.pgp</code> 和 ASCII Armor <code>.asc</code>。</p>
+          <label class="dropzone" id="decryptDropzone">
+            <input id="decryptFileInput" type="file" accept=".gpg,.pgp,.asc,*/*" hidden />
+            <span class="drop-icon">⬇️</span>
+            <strong>点击选择加密文件，或拖放到这里</strong>
+            <small id="decryptFileName">尚未选择文件</small>
+          </label>
+          <label class="field">
+            <span>私钥口令</span>
+            <input id="fileDecryptPassphrase" type="password" autocomplete="current-password" placeholder="输入私钥口令" />
+          </label>
+          <div class="actions wrap">
+            <button id="useManagedPrivateKeyFileBtn" class="button ghost" type="button">使用已加载私钥</button>
+            <button id="decryptFileBtn" class="button primary" type="button">解密并下载</button>
+          </div>
+        </div>
+      </div>
+      <div id="fileStatus" class="status block" aria-live="polite"></div>
+    </section>
+
+    <section class="panel help" data-panel="help">
+      <h2>使用说明与安全提醒</h2>
+      <div class="help-grid">
+        <article class="card">
+          <h3>标准操作流程</h3>
+          <ol>
+            <li>接收方生成密钥对，私钥只由自己保存。</li>
+            <li>接收方把公钥发给发送方，并通过其他可靠渠道核对指纹。</li>
+            <li>发送方使用接收方公钥加密文字或文件。</li>
+            <li>接收方使用自己的私钥和口令解密。</li>
+          </ol>
+        </article>
+        <article class="card">
+          <h3>跨平台使用</h3>
+          <ul>
+            <li>Windows/macOS/Linux：准备好 vendor 文件后，直接打开 <code>index.html</code>。</li>
+            <li>iOS/Android：建议通过同一局域网静态服务器访问，或部署到可信 HTTPS 静态站点后添加到主屏幕。</li>
+            <li>应用不调用后端接口；网络连接仅用于你自行部署或首次准备依赖。</li>
+          </ul>
+        </article>
+        <article class="card warning-card">
+          <h3>重要安全事项</h3>
+          <ul>
+            <li>私钥一旦泄露，任何持有者都可能解密发给该密钥的内容。</li>
+            <li>不要在不可信设备、被植入恶意扩展的浏览器或公共电脑上处理私钥。</li>
+            <li>“清除敏感内容”只能清空页面字段，无法保证浏览器或系统内存被物理覆写。</li>
+            <li>大文件优先使用页面显示的“流式模式”；该模式会直接写入你选择的本地文件，完整性校验失败时不会提交部分明文。</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="./vendor/openpgp.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
